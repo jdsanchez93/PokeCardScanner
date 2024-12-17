@@ -79,6 +79,7 @@ class CardAnalyzer(
             else -> Pair(widthCropPercent / 100f, heightCropPercent / 100f)
         }
 
+        // TODO refine this area
         cropRect.inset(
             (imageWidth * widthCrop / 2).toInt(),
             (imageHeight * heightCrop / 2).toInt()
@@ -97,8 +98,7 @@ class CardAnalyzer(
             .addOnSuccessListener { visionText ->
                 // Task completed successfully
 //                result.value = visionText.text
-                Log.d(TAG, "recognizeTextOnDevice: $visionText")
-
+                logExtrasForTesting(visionText)
             }
             .addOnFailureListener { exception ->
                 // Task failed with an exception
@@ -123,5 +123,58 @@ class CardAnalyzer(
         // to avoid analyze the entire image from the live camera feed.
         const val DESIRED_WIDTH_CROP_PERCENT = 8
         const val DESIRED_HEIGHT_CROP_PERCENT = 74
+
+        private fun logExtrasForTesting(text: Text?) {
+            if (text != null) {
+                Log.v(TAG, "Detected text has : " + text.textBlocks.size + " blocks")
+                for (i in text.textBlocks.indices) {
+                    val lines = text.textBlocks[i].lines
+                    Log.v(
+                        TAG,
+                        String.format("Detected text block %d has %d lines", i, lines.size)
+                    )
+                    for (j in lines.indices) {
+                        val elements = lines[j].elements
+                        Log.v(
+                            TAG,
+                            String.format("Detected text line %d has %d elements", j, elements.size)
+                        )
+                        for (k in elements.indices) {
+                            val element = elements[k]
+                            Log.v(
+                                TAG,
+                                String.format("Detected text element %d says: %s", k, element.text)
+                            )
+                            Log.v(
+                                TAG,
+                                String.format(
+                                    "Detected text element %d has a bounding box: %s",
+                                    k,
+                                    element.boundingBox!!.flattenToString()
+                                )
+                            )
+                            Log.v(
+                                TAG,
+                                String.format(
+                                    "Expected corner point size is 4, get %d",
+                                    element.cornerPoints!!.size
+                                )
+                            )
+                            for (point in element.cornerPoints!!) {
+                                Log.v(
+                                    TAG,
+                                    String.format(
+                                        "Corner point for element %d is located at: x - %d, y = %d",
+                                        k,
+                                        point.x,
+                                        point.y
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
