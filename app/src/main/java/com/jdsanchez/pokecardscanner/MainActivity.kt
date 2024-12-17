@@ -6,8 +6,6 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.ImageAnalysis.COORDINATE_SYSTEM_VIEW_REFERENCED
-import androidx.camera.mlkit.vision.MlKitAnalyzer
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
@@ -17,12 +15,13 @@ import androidx.core.view.WindowInsetsCompat
 import com.google.mlkit.vision.objects.ObjectDetection
 import com.google.mlkit.vision.objects.ObjectDetector
 import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
+import com.jdsanchez.pokecardscanner.analyzer.CardAnalyzer
 import com.jdsanchez.pokecardscanner.databinding.ActivityMainBinding
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
-     fun gg(savedInstanceState: Bundle?) {
+    fun gg(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
@@ -66,28 +65,7 @@ class MainActivity : AppCompatActivity() {
 
         cameraController.setImageAnalysisAnalyzer(
             ContextCompat.getMainExecutor(this),
-            MlKitAnalyzer(
-                listOf(objectDetector),
-                COORDINATE_SYSTEM_VIEW_REFERENCED,
-                ContextCompat.getMainExecutor(this)
-            ) { result: MlKitAnalyzer.Result? ->
-                val objectDetectorResults = result?.getValue(objectDetector)
-                if ((objectDetectorResults == null) ||
-                    (objectDetectorResults.size == 0) ||
-                    (objectDetectorResults.first() == null)
-                ) {
-                    previewView.overlay.clear()
-                    previewView.setOnTouchListener { _, _ -> false } //no-op
-                    return@MlKitAnalyzer
-                }
-
-                val detectedObjectViewModel = DetectedObjectViewModel(objectDetectorResults[0])
-                val detectedObjectDrawable = DetectedObjectDrawable(detectedObjectViewModel)
-
-                previewView.setOnTouchListener(detectedObjectViewModel.touchCallback)
-                previewView.overlay.clear()
-                previewView.overlay.add(detectedObjectDrawable)
-            }
+            CardAnalyzer(this, lifecycle)
         )
 
         cameraController.bindToLifecycle(this)

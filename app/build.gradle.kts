@@ -59,4 +59,5 @@ dependencies {
 
     implementation ("com.google.mlkit:barcode-scanning:17.0.2")
     implementation ("com.google.mlkit:object-detection:17.0.2")
+    implementation ("com.google.mlkit:text-recognition:16.0.1")
 }
