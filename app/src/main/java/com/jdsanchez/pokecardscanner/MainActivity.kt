@@ -3,15 +3,16 @@ package com.jdsanchez.pokecardscanner
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Size
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.google.mlkit.vision.objects.ObjectDetection
-import com.google.mlkit.vision.objects.ObjectDetector
-import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
 import com.jdsanchez.pokecardscanner.analyzer.CardAnalyzer
 import com.jdsanchez.pokecardscanner.databinding.ActivityMainBinding
 import java.util.concurrent.ExecutorService
@@ -20,7 +21,6 @@ import java.util.concurrent.Executors
 class MainActivity : AppCompatActivity() {
     private lateinit var viewBinding: ActivityMainBinding
     private lateinit var cameraExecutor: ExecutorService
-    private lateinit var objectDetector: ObjectDetector
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,11 +43,16 @@ class MainActivity : AppCompatActivity() {
         var cameraController = LifecycleCameraController(baseContext)
         val previewView: PreviewView = viewBinding.viewFinder
 
-        val options = ObjectDetectorOptions.Builder()
-            .setDetectorMode(ObjectDetectorOptions.STREAM_MODE)
-            .enableClassification()
+        // TODO optimize resolution
+        val resolutionStrategy = ResolutionStrategy(Size(1080, 1920),
+            ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER)
+
+        val resolutionSelector =  ResolutionSelector.Builder()
+            .setResolutionStrategy(resolutionStrategy)
+            .setAllowedResolutionMode(PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
             .build()
-        objectDetector = ObjectDetection.getClient(options)
+
+        cameraController.imageAnalysisResolutionSelector = resolutionSelector
 
         cameraController.setImageAnalysisAnalyzer(
             ContextCompat.getMainExecutor(this),
@@ -66,7 +71,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
-        objectDetector.close()
     }
 
     companion object {

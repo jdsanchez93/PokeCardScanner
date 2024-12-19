@@ -10,6 +10,7 @@ import androidx.lifecycle.Lifecycle
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.common.MlKitException
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.objects.DetectedObject
 import com.google.mlkit.vision.objects.ObjectDetection
 import com.google.mlkit.vision.objects.ObjectDetector
 import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
@@ -31,18 +32,12 @@ class CardAnalyzer(
 ) : ImageAnalysis.Analyzer {
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
-
-    val options = ObjectDetectorOptions.Builder()
-        .setDetectorMode(ObjectDetectorOptions.STREAM_MODE)
+    private val options = ObjectDetectorOptions.Builder()
+        .setDetectorMode(ObjectDetectorOptions.SINGLE_IMAGE_MODE)
         .build()
     private val objectDetector: ObjectDetector = ObjectDetection.getClient(options)
 
     private lateinit var objectBoundingBox: Rect;
-
-    private var imageCropPercentages: Pair<Int, Int> = Pair(
-        DESIRED_HEIGHT_CROP_PERCENT,
-        DESIRED_WIDTH_CROP_PERCENT
-    )
 
     init {
         lifecycle.addObserver(textRecognizer)
@@ -54,53 +49,37 @@ class CardAnalyzer(
 
         val rotationDegrees = imageProxy.imageInfo.rotationDegrees
 
-        // We requested a setTargetAspectRatio, but it's not guaranteed that's what the camera
-        // stack is able to support, so we calculate the actual ratio from the first frame to
-        // know how to appropriately crop the image we want to analyze.
-        val imageHeight = mediaImage.height
-        val imageWidth = mediaImage.width
+        // TODO figure out rotation... 0 works
+        detectCard(InputImage.fromMediaImage(mediaImage, 0))
+            .continueWithTask { task ->
+                if (!task.isSuccessful) {
+                    task.exception?.let {
+                        imageProxy.close()
+                        throw it
+                    }
+                }
 
-        val actualAspectRatio = imageWidth / imageHeight
+                val convertImageToBitmap = imageProxy.toBitmap()
 
-//        val convertImageToBitmap = ImageUtils.convertYuv420888ImageToBitmap(mediaImage)
-        val convertImageToBitmap = imageProxy.toBitmap()
-        val cropRect = Rect(0, 0, imageWidth, imageHeight)
+                val cropRect = getRectForCardInfo(objectBoundingBox)
 
-        // If the image has a way wider aspect ratio than expected, crop less of the height so we
-        // don't end up cropping too much of the image. If the image has a way taller aspect ratio
-        // than expected, we don't have to make any changes to our cropping so we don't handle it
-        // here.
-        val currentCropPercentages = imageCropPercentages ?: return
-        if (actualAspectRatio > 3) {
-            val originalHeightCropPercentage = currentCropPercentages.first
-            val originalWidthCropPercentage = currentCropPercentages.second
-            imageCropPercentages =
-                Pair(originalHeightCropPercentage / 2, originalWidthCropPercentage)
-        }
-
-        // If the image is rotated by 90 (or 270) degrees, swap height and width when calculating
-        // the crop.
-        val cropPercentages = imageCropPercentages ?: return
-        val heightCropPercent = cropPercentages.first
-        val widthCropPercent = cropPercentages.second
-        val (widthCrop, heightCrop) = when (rotationDegrees) {
-            90, 270 -> Pair(heightCropPercent / 100f, widthCropPercent / 100f)
-            else -> Pair(widthCropPercent / 100f, heightCropPercent / 100f)
-        }
-
-        // TODO refine this area
-        cropRect.inset(
-            (imageWidth * widthCrop / 2).toInt(),
-            (imageHeight * heightCrop / 2).toInt()
-        )
-        val croppedBitmap = ImageUtils.rotateAndCrop(convertImageToBitmap, rotationDegrees, cropRect)
-        recognizeTextOnDevice(InputImage.fromBitmap(croppedBitmap, 0)).addOnCompleteListener {
-            imageProxy.close()
-        }
+                val croppedBitmap = ImageUtils.rotateAndCrop(convertImageToBitmap, rotationDegrees, cropRect)
+                recognizeTextOnDevice(InputImage.fromBitmap(croppedBitmap, 0))
+            }
+            .addOnCompleteListener {
+                imageProxy.close()
+            }
     }
 
-    private fun detectCard(image: InputImage) {
-        objectDetector.process(image)
+    private fun getRectForCardInfo(rect: Rect): Rect {
+        // TODO this assumes the pic is rotated 90 degrees, fix it
+        val widthFraction = 9 * rect.width() / 10
+        val heightFraction = rect.height() / 2
+        return Rect(rect.left + widthFraction, rect.top + heightFraction, rect.right, rect.bottom)
+    }
+
+    private fun detectCard(image: InputImage): Task<List<DetectedObject>> {
+         return objectDetector.process(image)
             .addOnSuccessListener { detectedObjects ->
                 if ((detectedObjects == null) ||
                     (detectedObjects.size == 0) ||
@@ -151,10 +130,6 @@ class CardAnalyzer(
 
     companion object {
         private const val TAG = "TextAnalyzer"
-        // We only need to analyze the part of the image that has text, so we set crop percentages
-        // to avoid analyze the entire image from the live camera feed.
-        const val DESIRED_WIDTH_CROP_PERCENT = 8
-        const val DESIRED_HEIGHT_CROP_PERCENT = 74
 
         private fun logExtrasForTesting(text: Text?) {
             if (text != null) {
@@ -171,32 +146,6 @@ class CardAnalyzer(
                                 TAG,
                                 String.format("Detected text element %d says: %s", k, element.text)
                             )
-//                            Log.v(
-//                                TAG,
-//                                String.format(
-//                                    "Detected text element %d has a bounding box: %s",
-//                                    k,
-//                                    element.boundingBox!!.flattenToString()
-//                                )
-//                            )
-//                            Log.v(
-//                                TAG,
-//                                String.format(
-//                                    "Expected corner point size is 4, get %d",
-//                                    element.cornerPoints!!.size
-//                                )
-//                            )
-//                            for (point in element.cornerPoints!!) {
-//                                Log.v(
-//                                    TAG,
-//                                    String.format(
-//                                        "Corner point for element %d is located at: x - %d, y = %d",
-//                                        k,
-//                                        point.x,
-//                                        point.y
-//                                    )
-//                                )
-//                            }
                         }
                     }
                 }
