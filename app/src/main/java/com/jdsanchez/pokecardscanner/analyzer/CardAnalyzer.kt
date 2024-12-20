@@ -185,12 +185,15 @@ class CardAnalyzer(
         private const val BASE_API_URL = "https://1dj438lpp7.execute-api.us-east-2.amazonaws.com/api/cards"
 
         private fun buildApiUrl(cardNumber: String, setCode: String): String {
-            val base = HttpUrl.parse(BASE_API_URL);
-            return base.newBuilder()
-                .addQueryParameter("setCode", setCode)
-                .addQueryParameter("cardNumber", cardNumber)
-                .build()
-                .toString()
+            val base = BASE_API_URL.toHttpUrlOrNull();
+            if (base != null) {
+                return base.newBuilder()
+                    .addQueryParameter("setCode", setCode)
+                    .addQueryParameter("cardNumber", cardNumber)
+                    .build()
+                    .toString()
+            }
+            return ""
         }
 
         private fun analyzeCardText(text: Text?): String {
