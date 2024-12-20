@@ -1,11 +1,23 @@
 package com.jdsanchez.pokecardscanner.analyzer
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Rect
+import android.graphics.RectF
+import android.net.Uri
 import android.util.Log
+import android.view.MotionEvent
+import android.view.View
 import android.widget.Toast
+import androidx.annotation.OptIn
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import androidx.camera.view.PreviewView
+import androidx.camera.view.TransformExperimental
+import androidx.camera.view.transform.CoordinateTransform
+import androidx.camera.view.transform.ImageProxyTransformFactory
+import androidx.camera.view.transform.OutputTransform
+import androidx.core.graphics.toRect
 import androidx.lifecycle.Lifecycle
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.common.MlKitException
@@ -20,6 +32,8 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.jdsanchez.pokecardscanner.GraphicOverlay
 import com.jdsanchez.pokecardscanner.utils.ImageUtils
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+
 
 /**
  * Analyzes the frames passed in from the camera and returns any detected text within the requested
@@ -28,31 +42,37 @@ import okhttp3.HttpUrl
 class CardAnalyzer(
     private val context: Context,
     lifecycle: Lifecycle,
-    private val graphicOverlay: GraphicOverlay
-//    executor: Executor,
-//    private val result: MutableLiveData<String>,
-//    private val imageCropPercentages: MutableLiveData<Pair<Int, Int>>
+    private val graphicOverlay: GraphicOverlay,
+    private val previewView: PreviewView
 ) : ImageAnalysis.Analyzer {
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
     private val options = ObjectDetectorOptions.Builder()
+
         .setDetectorMode(ObjectDetectorOptions.SINGLE_IMAGE_MODE)
         .build()
     private val objectDetector: ObjectDetector = ObjectDetection.getClient(options)
 
     private lateinit var objectBoundingBox: Rect;
+    private lateinit var transformedRect: Rect;
 
     init {
         lifecycle.addObserver(textRecognizer)
     }
 
+    @OptIn(TransformExperimental::class)
     @androidx.camera.core.ExperimentalGetImage
     override fun analyze(imageProxy: ImageProxy) {
         val mediaImage = imageProxy.image ?: return
 
         val rotationDegrees = imageProxy.imageInfo.rotationDegrees
 
-        // TODO figure out rotation... 0 works
+        // imageProxy the output of an ImageAnalysis.
+        val source: OutputTransform = ImageProxyTransformFactory().getOutputTransform(imageProxy)
+        val target: OutputTransform? = previewView.outputTransform
+        // Build the transform from ImageAnalysis to PreviewView
+        val coordinateTransform = target?.let { CoordinateTransform(source, it) }
+
         detectCard(InputImage.fromMediaImage(mediaImage, 0))
             .continueWithTask { task ->
                 if (!task.isSuccessful) {
@@ -61,9 +81,15 @@ class CardAnalyzer(
                         throw it
                     }
                 }
+                // TODO think about how we use objectBoundingBox. e.g. the result of the previous task
 
+                // 1. generate rect for PreviewView
+                val detectedRect = RectF(objectBoundingBox)
+                coordinateTransform?.mapRect(detectedRect)
+                transformedRect = detectedRect.toRect()
+
+                // 2. generate rect for text recognition
                 val convertImageToBitmap = imageProxy.toBitmap()
-
                 val cropRect = getRectForCardInfo(objectBoundingBox)
 
                 val croppedBitmap = ImageUtils.rotateAndCrop(convertImageToBitmap, rotationDegrees, cropRect)
@@ -72,6 +98,11 @@ class CardAnalyzer(
             .addOnCompleteListener {
                 imageProxy.close()
             }
+    }
+
+    @Override
+    override fun getTargetCoordinateSystem(): Int {
+        return ImageAnalysis.COORDINATE_SYSTEM_VIEW_REFERENCED
     }
 
     private fun getRectForCardInfo(rect: Rect): Rect {
@@ -88,8 +119,6 @@ class CardAnalyzer(
                     (detectedObjects.size == 0) ||
                     (detectedObjects.first() == null)
                 ) {
-//                    previewView.overlay.clear()
-//                    previewView.setOnTouchListener { _, _ -> false } //no-op
                     return@addOnSuccessListener
                 }
                 objectBoundingBox = detectedObjects[0].boundingBox
@@ -110,15 +139,24 @@ class CardAnalyzer(
         // Pass image to an ML Kit Vision API
         return textRecognizer.process(image)
             .addOnSuccessListener { visionText ->
-                // Task completed successfully
-//                result.value = visionText.text
                 val apiUrl = analyzeCardText(visionText)
                 if (apiUrl.isNotEmpty()) {
-                    // TODO graphicOverlay
-                    val graphic = GraphicOverlay.RectGraphic(graphicOverlay, objectBoundingBox)
+                    graphicOverlay.clear()
+//                    previewView.setOnTouchListener { _, _ -> false } //no-op
+
+                    val touchCallback = { v: View, e: MotionEvent ->
+                        if (e.action == MotionEvent.ACTION_DOWN && transformedRect.contains(e.getX().toInt(), e.getY().toInt())) {
+                            val openBrowserIntent = Intent(Intent.ACTION_VIEW)
+                            openBrowserIntent.data = Uri.parse(apiUrl)
+                            v.context.startActivity(openBrowserIntent)
+                        }
+                        true // return true from the callback to signify the event was handled
+                    }
+
+                    previewView.setOnTouchListener(touchCallback)
+                    val graphic = GraphicOverlay.RectGraphic(graphicOverlay, transformedRect, apiUrl)
                     graphicOverlay.add(graphic)
                 }
-
             }
             .addOnFailureListener { exception ->
                 // Task failed with an exception
@@ -142,7 +180,7 @@ class CardAnalyzer(
 
         private val setNumberPattern = Regex("\\d{3}/(\\d{3})")
         private val tripleDigitPattern = Regex("\\d{3}")
-        private val setCodeMatcher = Regex("(G|)?([A-Z]{3})(EN)?")
+        private val setCodeMatcher = Regex("(G)?([A-Z]{3})(EN)?")
 
         private const val BASE_API_URL = "https://1dj438lpp7.execute-api.us-east-2.amazonaws.com/api/cards"
 

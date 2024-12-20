@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity() {
 
         cameraController.setImageAnalysisAnalyzer(
             ContextCompat.getMainExecutor(this),
-            CardAnalyzer(this, lifecycle, graphicOverlay)
+            CardAnalyzer(this, lifecycle, graphicOverlay, previewView)
         )
 
         cameraController.bindToLifecycle(this)
