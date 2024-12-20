@@ -12,8 +12,13 @@ class GraphicOverlay(context: Context, attrs: AttributeSet? = null) : View(conte
 
     private val graphics = mutableListOf<Graphic>()
 
+    override fun performClick(): Boolean {
+        return super.performClick()
+    }
+
     fun clear() {
         graphics.clear()
+        setOnTouchListener() { _, _ -> false } //no-op
         postInvalidate()
     }
 

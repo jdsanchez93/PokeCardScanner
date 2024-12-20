@@ -56,17 +56,16 @@ class CardAnalyzer(
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
     private val options = ObjectDetectorOptions.Builder()
-
         .setDetectorMode(ObjectDetectorOptions.SINGLE_IMAGE_MODE)
         .build()
     private val objectDetector: ObjectDetector = ObjectDetection.getClient(options)
 
-    private lateinit var objectBoundingBox: Rect;
-    private lateinit var transformedRect: Rect;
+    private lateinit var objectBoundingBox: Rect
+    private lateinit var transformedRect: Rect
 
     private lateinit var cardUrl: String
 
-    val testedUrls: MutableList<String> = ArrayList()
+    private val testedUrls: MutableList<String> = ArrayList()
 
     init {
         lifecycle.addObserver(textRecognizer)
@@ -161,20 +160,21 @@ class CardAnalyzer(
                     }
                 }
 
-                if (::cardUrl.isInitialized) {
+                if (::cardUrl.isInitialized && cardUrl.isNotEmpty()) {
                     graphicOverlay.clear()
-//                    previewView.setOnTouchListener { _, _ -> false } //no-op
 
                     val touchCallback = { v: View, e: MotionEvent ->
                         if (e.action == MotionEvent.ACTION_DOWN && transformedRect.contains(e.getX().toInt(), e.getY().toInt())) {
                             val openBrowserIntent = Intent(Intent.ACTION_VIEW)
                             openBrowserIntent.data = Uri.parse(cardUrl)
                             v.context.startActivity(openBrowserIntent)
+                            graphicOverlay.clear()
+                            ::cardUrl.set("")
                         }
                         true // return true from the callback to signify the event was handled
                     }
 
-                    previewView.setOnTouchListener(touchCallback)
+                    graphicOverlay.setOnTouchListener(touchCallback)
                     val graphic = GraphicOverlay.RectGraphic(graphicOverlay, transformedRect, cardUrl)
                     graphicOverlay.add(graphic)
                 }
@@ -243,7 +243,7 @@ class CardAnalyzer(
         private const val BASE_API_URL = "https://1dj438lpp7.execute-api.us-east-2.amazonaws.com/api/cards"
 
         private fun buildApiUrl(cardNumber: String, setCode: String): String {
-            val base = BASE_API_URL.toHttpUrlOrNull();
+            val base = BASE_API_URL.toHttpUrlOrNull()
             if (base != null) {
                 return base.newBuilder()
                     .addQueryParameter("setCode", setCode)
@@ -256,7 +256,7 @@ class CardAnalyzer(
 
         private fun analyzeCardText(text: Text?): String {
             if (text != null) {
-                var firstMatch: String = ""
+                var firstMatch = ""
                 for (i in text.textBlocks.indices) {
                     val lines = text.textBlocks[i].lines
                     for (j in lines.indices) {
