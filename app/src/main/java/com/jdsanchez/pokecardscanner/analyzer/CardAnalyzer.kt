@@ -20,6 +20,7 @@ import androidx.camera.view.transform.OutputTransform
 import androidx.core.graphics.toRect
 import androidx.lifecycle.Lifecycle
 import com.google.android.gms.tasks.Task
+import com.google.gson.Gson
 import com.google.mlkit.common.MlKitException
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.objects.DetectedObject
@@ -29,10 +30,17 @@ import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.jdsanchez.pokecardscanner.ApiResponse
 import com.jdsanchez.pokecardscanner.GraphicOverlay
 import com.jdsanchez.pokecardscanner.utils.ImageUtils
-import okhttp3.HttpUrl
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.IOException
 
 
 /**
@@ -55,6 +63,10 @@ class CardAnalyzer(
 
     private lateinit var objectBoundingBox: Rect;
     private lateinit var transformedRect: Rect;
+
+    private lateinit var cardUrl: String
+
+    val testedUrls: MutableList<String> = ArrayList()
 
     init {
         lifecycle.addObserver(textRecognizer)
@@ -140,21 +152,30 @@ class CardAnalyzer(
         return textRecognizer.process(image)
             .addOnSuccessListener { visionText ->
                 val apiUrl = analyzeCardText(visionText)
-                if (apiUrl.isNotEmpty()) {
+
+                if (apiUrl.isNotEmpty() && testedUrls.contains(apiUrl).not()) {
+                    runBlocking { // Creates a coroutine scope
+                        launch { // Launches a new coroutine
+                            testUrl(apiUrl) // Calling a suspend function inside a coroutine
+                        }
+                    }
+                }
+
+                if (::cardUrl.isInitialized) {
                     graphicOverlay.clear()
 //                    previewView.setOnTouchListener { _, _ -> false } //no-op
 
                     val touchCallback = { v: View, e: MotionEvent ->
                         if (e.action == MotionEvent.ACTION_DOWN && transformedRect.contains(e.getX().toInt(), e.getY().toInt())) {
                             val openBrowserIntent = Intent(Intent.ACTION_VIEW)
-                            openBrowserIntent.data = Uri.parse(apiUrl)
+                            openBrowserIntent.data = Uri.parse(cardUrl)
                             v.context.startActivity(openBrowserIntent)
                         }
                         true // return true from the callback to signify the event was handled
                     }
 
                     previewView.setOnTouchListener(touchCallback)
-                    val graphic = GraphicOverlay.RectGraphic(graphicOverlay, transformedRect, apiUrl)
+                    val graphic = GraphicOverlay.RectGraphic(graphicOverlay, transformedRect, cardUrl)
                     graphicOverlay.add(graphic)
                 }
             }
@@ -166,6 +187,43 @@ class CardAnalyzer(
                     Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+
+    private suspend fun makeHttpGetRequestOkHttp(urlString: String): Pair<Int, ApiResponse?> =
+        withContext(Dispatchers.IO) {
+            val client = OkHttpClient()
+            val request = Request.Builder()
+                .url(urlString)
+                .build()
+
+            try {
+                client.newCall(request).execute().use { response ->
+                    val responseCode = response.code
+                    var apiResponse : ApiResponse? = null
+
+                    if (response.isSuccessful) {
+                        val gson = Gson()
+                        apiResponse = gson.fromJson(response.body?.string(), ApiResponse::class.java)
+                    }
+                    return@withContext Pair(responseCode, apiResponse)
+                }
+            } catch (e: IOException) {
+                // Handle network errors
+                e.printStackTrace()
+                return@withContext Pair(-1, null) // Indicate an error
+            }
+        }
+
+    private suspend fun testUrl(url: String) {
+        val (responseCode, apiResponse) = makeHttpGetRequestOkHttp(url)
+
+        if (responseCode == 200) {
+            if (apiResponse != null) {
+                cardUrl = apiResponse.url
+            }
+        } else {
+            testedUrls.add(url)
+        }
     }
 
     private fun getErrorMessage(exception: Exception): String? {
