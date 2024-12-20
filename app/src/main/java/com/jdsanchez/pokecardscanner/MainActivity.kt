@@ -46,7 +46,7 @@ class MainActivity : AppCompatActivity() {
         val graphicOverlay = viewBinding.graphicOverlay
 
         // TODO optimize resolution
-        val resolutionStrategy = ResolutionStrategy(Size(1080, 1920),
+        val resolutionStrategy = ResolutionStrategy(Size(2560, 1440),
             ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER)
 
         val resolutionSelector =  ResolutionSelector.Builder()
