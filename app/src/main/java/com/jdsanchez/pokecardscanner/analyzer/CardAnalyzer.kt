@@ -18,6 +18,7 @@ import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.jdsanchez.pokecardscanner.utils.ImageUtils
+import okhttp3.HttpUrl
 
 /**
  * Analyzes the frames passed in from the camera and returns any detected text within the requested
@@ -109,7 +110,11 @@ class CardAnalyzer(
             .addOnSuccessListener { visionText ->
                 // Task completed successfully
 //                result.value = visionText.text
-                logExtrasForTesting(visionText)
+                val apiUrl = analyzeCardText(visionText)
+                if (apiUrl.isNotEmpty()) {
+                    Toast.makeText(context, apiUrl, Toast.LENGTH_SHORT).show()
+                }
+
             }
             .addOnFailureListener { exception ->
                 // Task failed with an exception
@@ -131,25 +136,72 @@ class CardAnalyzer(
     companion object {
         private const val TAG = "TextAnalyzer"
 
-        private fun logExtrasForTesting(text: Text?) {
+        private val setNumberPattern = Regex("\\d{3}/(\\d{3})")
+        private val tripleDigitPattern = Regex("\\d{3}")
+        private val setCodeMatcher = Regex("(G|)?([A-Z]{3})(EN)?")
+
+        private const val BASE_API_URL = "https://1dj438lpp7.execute-api.us-east-2.amazonaws.com/api/cards"
+
+        private fun buildApiUrl(cardNumber: String, setCode: String): String {
+            val base = HttpUrl.parse(BASE_API_URL);
+            return base.newBuilder()
+                .addQueryParameter("setCode", setCode)
+                .addQueryParameter("cardNumber", cardNumber)
+                .build()
+                .toString()
+        }
+
+        private fun analyzeCardText(text: Text?): String {
             if (text != null) {
-//                Log.v(TAG, "Detected text has : " + text.textBlocks.size + " blocks")
+                var firstMatch: String = ""
                 for (i in text.textBlocks.indices) {
                     val lines = text.textBlocks[i].lines
-//                    Log.v(TAG, String.format("Detected text block %d has %d lines", i, lines.size))
                     for (j in lines.indices) {
                         val elements = lines[j].elements
-//                        Log.v(TAG, String.format("Detected text line %d has %d elements", j, elements.size))
                         for (k in elements.indices) {
                             val element = elements[k]
-                            Log.v(
-                                TAG,
-                                String.format("Detected text element %d says: %s", k, element.text)
-                            )
+                            Log.v(TAG, String.format("Detected text element %d says: %s", k, element.text))
+
+                            val setNumberMatchResult = setNumberPattern.find(element.text)
+                            if (setNumberMatchResult != null) {
+                                val cardNumber = setNumberMatchResult.groups[0]?.value
+                                Log.v(TAG, "Found card number: $cardNumber")
+//                                val totalCards = setNumberMatchResult.groups[1]?.value
+
+                                var previousText = ""
+                                // TODO handle case where previousText is "EN" (need to get previous previous)
+                                // look for setCode in either the previous element or the previous line
+                                if (k > 0) {
+                                    previousText = elements[k - 1].text
+                                } else if (j > 0) {
+                                    previousText = lines[j - 1].elements[0].text
+                                }
+
+                                if (previousText.isNotEmpty()) {
+                                    val maybeSetCode = setCodeMatcher.find(previousText)
+                                    if (maybeSetCode != null) {
+                                        val setCode = maybeSetCode.groups[2]?.value
+                                        Log.v(TAG, "Found set code: $setCode")
+
+                                        val apiUrl = buildApiUrl(cardNumber!!, setCode!!)
+                                        Log.v(TAG, "API URL: $apiUrl")
+                                        return apiUrl
+                                    }
+                                }
+                            }
+
+                            // TODO use this for energy cards
+                            tripleDigitPattern.findAll(element.text).forEach { r ->
+                                if (firstMatch.isEmpty()) {
+                                    firstMatch = r.value
+                                    Log.v(TAG, "First triple digit match: $firstMatch")
+                                }
+                            }
                         }
                     }
                 }
             }
+            return ""
         }
     }
 }
