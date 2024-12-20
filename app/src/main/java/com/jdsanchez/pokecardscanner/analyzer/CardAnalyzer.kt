@@ -17,6 +17,7 @@ import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.jdsanchez.pokecardscanner.GraphicOverlay
 import com.jdsanchez.pokecardscanner.utils.ImageUtils
 import okhttp3.HttpUrl
 
@@ -27,6 +28,7 @@ import okhttp3.HttpUrl
 class CardAnalyzer(
     private val context: Context,
     lifecycle: Lifecycle,
+    private val graphicOverlay: GraphicOverlay
 //    executor: Executor,
 //    private val result: MutableLiveData<String>,
 //    private val imageCropPercentages: MutableLiveData<Pair<Int, Int>>
@@ -112,7 +114,9 @@ class CardAnalyzer(
 //                result.value = visionText.text
                 val apiUrl = analyzeCardText(visionText)
                 if (apiUrl.isNotEmpty()) {
-                    Toast.makeText(context, apiUrl, Toast.LENGTH_SHORT).show()
+                    // TODO graphicOverlay
+                    val graphic = GraphicOverlay.RectGraphic(graphicOverlay, objectBoundingBox)
+                    graphicOverlay.add(graphic)
                 }
 
             }

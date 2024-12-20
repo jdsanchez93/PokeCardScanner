@@ -13,6 +13,7 @@ import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.google.mlkit.vision.objects.DetectedObject
 import com.jdsanchez.pokecardscanner.analyzer.CardAnalyzer
 import com.jdsanchez.pokecardscanner.databinding.ActivityMainBinding
 import java.util.concurrent.ExecutorService
@@ -42,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private fun startCamera() {
         var cameraController = LifecycleCameraController(baseContext)
         val previewView: PreviewView = viewBinding.viewFinder
+        val graphicOverlay = viewBinding.graphicOverlay
 
         // TODO optimize resolution
         val resolutionStrategy = ResolutionStrategy(Size(1080, 1920),
@@ -56,7 +58,7 @@ class MainActivity : AppCompatActivity() {
 
         cameraController.setImageAnalysisAnalyzer(
             ContextCompat.getMainExecutor(this),
-            CardAnalyzer(this, lifecycle)
+            CardAnalyzer(this, lifecycle, graphicOverlay)
         )
 
         cameraController.bindToLifecycle(this)
@@ -98,3 +100,5 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
+
+class AnalysisResult(val apiUrl: String, val detectedObject: DetectedObject)
