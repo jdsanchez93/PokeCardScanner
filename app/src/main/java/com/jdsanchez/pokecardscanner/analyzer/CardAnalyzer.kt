@@ -20,6 +20,7 @@ import androidx.camera.view.transform.OutputTransform
 import androidx.core.graphics.toRect
 import androidx.lifecycle.Lifecycle
 import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.Tasks
 import com.google.gson.Gson
 import com.google.mlkit.common.MlKitException
 import com.google.mlkit.vision.common.InputImage
@@ -60,7 +61,6 @@ class CardAnalyzer(
         .build()
     private val objectDetector: ObjectDetector = ObjectDetection.getClient(options)
 
-    private lateinit var objectBoundingBox: Rect
     private lateinit var transformedRect: Rect
 
     private lateinit var cardUrl: String
@@ -92,63 +92,28 @@ class CardAnalyzer(
                         throw it
                     }
                 }
-                // TODO think about how we use objectBoundingBox. e.g. the result of the previous task
+                val detectedObjects = task.result
+                if ((detectedObjects == null) ||
+                    (detectedObjects.isEmpty())
+                ) {
+                    // No card detected
+                    Tasks.forResult(null)
+                }
+
+                val boundingBox = detectedObjects[0].boundingBox
 
                 // 1. generate rect for PreviewView
-                val detectedRect = RectF(objectBoundingBox)
+                val detectedRect = RectF(boundingBox)
                 coordinateTransform?.mapRect(detectedRect)
                 transformedRect = detectedRect.toRect()
 
                 // 2. generate rect for text recognition
                 val convertImageToBitmap = imageProxy.toBitmap()
-                val cropRect = getRectForCardInfo(objectBoundingBox)
+                val cropRect = getRectForCardInfo(boundingBox)
 
                 val croppedBitmap = ImageUtils.rotateAndCrop(convertImageToBitmap, rotationDegrees, cropRect)
                 recognizeTextOnDevice(InputImage.fromBitmap(croppedBitmap, 0))
             }
-            .addOnCompleteListener {
-                imageProxy.close()
-            }
-    }
-
-    @Override
-    override fun getTargetCoordinateSystem(): Int {
-        return ImageAnalysis.COORDINATE_SYSTEM_VIEW_REFERENCED
-    }
-
-    private fun getRectForCardInfo(rect: Rect): Rect {
-        // TODO this assumes the pic is rotated 90 degrees, fix it
-        val widthFraction = 9 * rect.width() / 10
-        val heightFraction = rect.height() / 2
-        return Rect(rect.left + widthFraction, rect.top + heightFraction, rect.right, rect.bottom)
-    }
-
-    private fun detectCard(image: InputImage): Task<List<DetectedObject>> {
-         return objectDetector.process(image)
-            .addOnSuccessListener { detectedObjects ->
-                if ((detectedObjects == null) ||
-                    (detectedObjects.size == 0) ||
-                    (detectedObjects.first() == null)
-                ) {
-                    return@addOnSuccessListener
-                }
-                objectBoundingBox = detectedObjects[0].boundingBox
-            }
-            .addOnFailureListener { exception ->
-                // Task failed with an exception
-                Log.e(TAG, "Object detection error", exception)
-                val message = getErrorMessage(exception)
-                message?.let {
-                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                }
-            }
-    }
-
-    private fun recognizeTextOnDevice(
-        image: InputImage
-    ): Task<Text> {
-        // Pass image to an ML Kit Vision API
-        return textRecognizer.process(image)
             .addOnSuccessListener { visionText ->
                 val apiUrl = analyzeCardText(visionText)
 
@@ -179,6 +144,40 @@ class CardAnalyzer(
                     graphicOverlay.add(graphic)
                 }
             }
+            .addOnCompleteListener {
+                imageProxy.close()
+            }
+    }
+
+    @Override
+    override fun getTargetCoordinateSystem(): Int {
+        return ImageAnalysis.COORDINATE_SYSTEM_VIEW_REFERENCED
+    }
+
+    private fun getRectForCardInfo(rect: Rect): Rect {
+        // TODO this assumes the pic is rotated 90 degrees, fix it
+        val widthFraction = 9 * rect.width() / 10
+        val heightFraction = rect.height() / 2
+        return Rect(rect.left + widthFraction, rect.top + heightFraction, rect.right, rect.bottom)
+    }
+
+    private fun detectCard(image: InputImage): Task<List<DetectedObject>> {
+         return objectDetector.process(image)
+            .addOnFailureListener { exception ->
+                // Task failed with an exception
+                Log.e(TAG, "Object detection error", exception)
+                val message = getErrorMessage(exception)
+                message?.let {
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                }
+            }
+    }
+
+    private fun recognizeTextOnDevice(
+        image: InputImage
+    ): Task<Text> {
+        // Pass image to an ML Kit Vision API
+        return textRecognizer.process(image)
             .addOnFailureListener { exception ->
                 // Task failed with an exception
                 Log.e(TAG, "Text recognition error", exception)
@@ -187,7 +186,7 @@ class CardAnalyzer(
                     Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                 }
             }
-        }
+    }
 
     private suspend fun makeHttpGetRequestOkHttp(urlString: String): Pair<Int, ApiResponse?> =
         withContext(Dispatchers.IO) {
