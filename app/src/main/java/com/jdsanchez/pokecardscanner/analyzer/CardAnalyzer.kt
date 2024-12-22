@@ -111,6 +111,12 @@ class CardAnalyzer(
                 val convertImageToBitmap = imageProxy.toBitmap()
                 val cropRect = getRectForCardInfo(boundingBox)
 
+                graphicOverlay.clear()
+                // TODO
+                val textToDisplay: String = if (::cardUrl.isInitialized) cardUrl else ""
+                val graphic = GraphicOverlay.RectGraphic(graphicOverlay, transformedRect, textToDisplay)
+                graphicOverlay.add(graphic)
+
                 val croppedBitmap = ImageUtils.rotateAndCrop(convertImageToBitmap, rotationDegrees, cropRect)
                 recognizeTextOnDevice(InputImage.fromBitmap(croppedBitmap, 0))
             }
@@ -126,7 +132,6 @@ class CardAnalyzer(
                 }
 
                 if (::cardUrl.isInitialized && cardUrl.isNotEmpty()) {
-                    graphicOverlay.clear()
 
                     val touchCallback = { v: View, e: MotionEvent ->
                         if (e.action == MotionEvent.ACTION_DOWN && transformedRect.contains(e.getX().toInt(), e.getY().toInt())) {
@@ -135,13 +140,14 @@ class CardAnalyzer(
                             v.context.startActivity(openBrowserIntent)
                             graphicOverlay.clear()
                             ::cardUrl.set("")
+                            testedUrls.clear()
                         }
                         true // return true from the callback to signify the event was handled
                     }
 
-                    graphicOverlay.setOnTouchListener(touchCallback)
                     val graphic = GraphicOverlay.RectGraphic(graphicOverlay, transformedRect, cardUrl)
                     graphicOverlay.add(graphic)
+                    graphicOverlay.setOnTouchListener(touchCallback)
                 }
             }
             .addOnCompleteListener {

@@ -61,20 +61,22 @@ class GraphicOverlay(context: Context, attrs: AttributeSet? = null) : View(conte
 
         override fun draw(canvas: Canvas) {
             canvas.drawRect(rect, boundingRectPaint)
-            canvas.drawRect(
-                Rect(
-                    rect.left,
-                    rect.bottom + contentPadding/2,
-                    rect.left + textWidth + contentPadding*2,
-                    rect.bottom + contentTextPaint.textSize.toInt() + contentPadding),
-                contentRectPaint
-            )
-            canvas.drawText(
-                text,
-                (rect.left + contentPadding).toFloat(),
-                (rect.bottom + contentPadding*2).toFloat(),
-                contentTextPaint
-            )
+            if (text.isNotEmpty()) {
+                canvas.drawRect(
+                    Rect(
+                        rect.left,
+                        rect.bottom + contentPadding/2,
+                        rect.left + textWidth + contentPadding*2,
+                        rect.bottom + contentTextPaint.textSize.toInt() + contentPadding),
+                    contentRectPaint
+                )
+                canvas.drawText(
+                    text,
+                    (rect.left + contentPadding).toFloat(),
+                    (rect.bottom + contentPadding*2).toFloat(),
+                    contentTextPaint
+                )
+            }
         }
     }
 }
